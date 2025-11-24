@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from "react";
 import Button from "../components/Button";
 import { Link } from "react-router-dom";
+import { API_BASE_URL } from "../config/api";
 
 
 
@@ -12,7 +13,7 @@ const DashboardPage = () => {
     const [filtered, setFiltered] = useState([]);
     const [search, setSearch] = useState("");
     const [loading, setLoading] = useState(true);
-    const [loadError, setLoadError] = useState(null);
+    const [loadError, setLoadError] = useState("");
 
     const [url, setUrl] = useState("");
     const [code, setCode] = useState("");
@@ -20,34 +21,46 @@ const DashboardPage = () => {
     const [formSuccess, setFormSuccess] = useState("");
     const [submitting, setSubmitting] = useState(false);
 
-    // simulate loading links
-    useEffect(() => {
-        setLoading(true);
-        setLoadError(null);
-        const t = setTimeout(() => {
-            // pretend this came from API
-            setLinks(mockLinks);
-            setFiltered(mockLinks);
+    //  Fetch all links from backend: GET /api/links
+    async function fetchLinks() {
+        try {
+            setLoading(true);
+            setLoadError("");
+            const res = await fetch(`${API_BASE_URL}/api/links`);
+            if (!res.ok) {
+                throw new Error("Failed to fetch links");
+            }
+            const json = await res.json();
+            // json = { data: [ { code, long_url, clicks, last_clicked, created_at, ... } ] }
+            const data = json.data || [];
+            setLinks(data);
+            setFiltered(data);
+        } catch (err) {
+            console.error(err);
+            setLoadError("Could not load links from server.");
+        } finally {
             setLoading(false);
-        }, 700);
-        return () => clearTimeout(t);
-    }, []);
+        }
+    }
 
     useEffect(() => {
-        const q = search.toLowerCase();
-        const res = links.filter(
-            (l) =>
-                l.code.toLowerCase().includes(q) ||
-                l.url.toLowerCase().includes(q)
+        fetchLinks();
+    }, []);
+
+    // Filter locally by code / long_url
+    useEffect(() => {
+        console.log(search , "search")
+        const searchValue = search.toLowerCase();
+        const result = links.filter(
+            (link) =>
+                link.code.toLowerCase().startsWith(searchValue) ||
+                (link.long_url || "").toLowerCase().startsWith(searchValue)
         );
-        setFiltered(res);
+        setFiltered(result);
     }, [search, links]);
 
     function validateUrl(value) {
         try {
-            // basic URL validation using URL constructor
-            // this is enough for UI demo
-            // eslint-disable-next-line no-new
             new URL(value);
             return true;
         } catch {
@@ -55,7 +68,8 @@ const DashboardPage = () => {
         }
     }
 
-    function handleCreate(e) {
+    //  Create link: POST /api/links
+    async function handleCreate(e) {
         e.preventDefault();
         setFormError("");
         setFormSuccess("");
@@ -73,57 +87,91 @@ const DashboardPage = () => {
             return;
         }
 
-        // collision check (UI only)
-        if (code && links.some((l) => l.code === code)) {
-            setFormError("This code already exists. Please choose another.");
-            return;
-        }
-
         setSubmitting(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/links`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    long_url: url.trim(),
+                    code: code || undefined, // backend will generate if undefined
+                }),
+            });
 
-        setTimeout(() => {
+            if (!res.ok) {
+                const errorData = await res.json().catch(() => ({}));
+                if (res.status === 409) {
+                    setFormError(errorData.error || "Code already exists.");
+                } else if (res.status === 400) {
+                    setFormError(errorData.error || "Invalid URL or code.");
+                } else {
+                    setFormError("Failed to create link. Please try again.");
+                }
+                return;
+            }
+
+            const json = await res.json();
+            // json = { code, long_url, clicks, last_clicked }
             const newLink = {
-                code: code || "random1", // simulate backend-generated
-                url: url.trim(),
-                clicks: 0,
-                lastClicked: "—",
+                code: json.code,
+                long_url: json.long_url,
+                clicks: json.clicks ?? 0,
+                last_clicked: json.last_clicked,
+                created_at: new Date().toISOString(),
             };
+
             const updated = [newLink, ...links];
             setLinks(updated);
             setUrl("");
             setCode("");
             setFormSuccess("Link created successfully.");
+        } catch (err) {
+            console.error(err);
+            setFormError("Something went wrong. Please try again.");
+        } finally {
             setSubmitting(false);
-        }, 600);
+        }
     }
 
-    function handleDelete(codeToDelete) {
-        if (!window.confirm("Delete this link?")) return;
-        const updated = links.filter((l) => l.code !== codeToDelete);
-        setLinks(updated);
+    // Delete link: DELETE /api/links/:code
+    async function handleDelete(codeToDelete) {
+        const confirmDelete = window.confirm("Delete this link?");
+        if (!confirmDelete) return;
+
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/links/${codeToDelete}`, {
+                method: "DELETE",
+            });
+
+            // Backend might return 404 if not found
+            if (!res.ok) {
+                const json = await res.json().catch(() => ({}));
+                alert(json.error || "Failed to delete link.");
+                return;
+            }
+
+            const updated = links.filter((link) => link.code !== codeToDelete);
+            setLinks(updated);
+        } catch (err) {
+            console.error(err);
+            alert("Error deleting link. Please try again.");
+        }
     }
 
-    function handleCopy(shortUrl) {
+    //  Copy short URL (redirecting code )
+    function handleCopy(code) {
+        const shortUrl = `${API_BASE_URL}/${code}`;
         navigator.clipboard
             .writeText(shortUrl)
+            .then(() => {
+                // optional: toast
+            })
             .catch(() => {
-                // ignore for now
+                alert("Failed to copy URL");
             });
     }
-    const mockLinks = [
-        {
-            code: "docs12",
-            url: "https://example.com/docs/getting-started-with-tiny-link-assignment",
-            clicks: 42,
-            lastClicked: "2025-11-20T12:30:00Z",
-        },
-        {
-            code: "login88",
-            url: "https://app.example.com/login",
-            clicks: 5,
-            lastClicked: "2025-11-21T09:10:00Z",
-        },
-    ];
 
 
     return (
@@ -183,15 +231,15 @@ const DashboardPage = () => {
                                     Custom code (optional)
                                 </label>
                                 <div className="flex items-center gap-1 text-sm">
-                                    <span className="inline-flex items-center rounded-l-md border border-slate-700 bg-slate-900 px-2 text-slate-500">
-                                        yoursite.com/
+                                    <span className="inline-flex items-center w-fit rounded-l-md border border-slate-700 bg-slate-900 px-2 py-2 text-slate-500">
+                                        tiny-url-backend.up.railway.app
                                     </span>
                                     <input
                                         type="text"
                                         value={code}
                                         onChange={(e) => setCode(e.target.value)}
                                         placeholder="docs12"
-                                        className="flex-1 rounded-r-md border border-l-0 border-slate-700 bg-slate-900 px-2 py-2 text-sm text-slate-50 placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                        className="flex-1 rounded-r-md w-full border border-l-0 border-slate-700 bg-slate-900 px-2 py-2 text-sm text-slate-50 placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                                     />
                                 </div>
                                 <p className="text-[11px] text-slate-500">
@@ -237,7 +285,7 @@ const DashboardPage = () => {
 
                         {loadError && !loading && (
                             <div className="rounded-md border border-rose-700 bg-rose-900/40 px-3 py-2 text-xs text-rose-100">
-                                Couldn&apos;t load links.
+                                {loadError}
                             </div>
                         )}
 
@@ -266,7 +314,6 @@ const DashboardPage = () => {
                                     </thead>
                                     <tbody>
                                         {filtered.map((link) => {
-                                            const shortUrl = `https://yourapp.com/${link.code}`;
                                             return (
                                                 <tr
                                                     key={link.code}
@@ -282,30 +329,28 @@ const DashboardPage = () => {
                                                     </td>
                                                     <td className="max-w-xs px-3 py-2 align-middle">
                                                         <a
-                                                            href={link.url}
+                                                            href={link.long_url}
                                                             target="_blank"
                                                             rel="noreferrer"
                                                             className="block truncate text-[11px] text-slate-200 hover:text-indigo-300"
-                                                            title={link.url}
+                                                            title={link.long_url}
                                                         >
-                                                            {link.url}
+                                                            {link.long_url}
                                                         </a>
                                                     </td>
                                                     <td className="px-3 py-2 text-right align-middle text-xs text-slate-200">
                                                         {link.clicks}
                                                     </td>
                                                     <td className="px-3 py-2 align-middle text-[11px] text-slate-400">
-                                                        {link.lastClicked === "—"
-                                                            ? "Never"
-                                                            : new Date(
-                                                                link.lastClicked
-                                                            ).toLocaleString()}
+                                                        {link.last_clicked
+                                                            ? new Date(link.last_clicked).toLocaleString()
+                                                            : "Never"}
                                                     </td>
                                                     <td className="px-3 py-2 text-right align-middle">
                                                         <div className="flex justify-end gap-2">
                                                             <button
                                                                 type="button"
-                                                                onClick={() => handleCopy(shortUrl)}
+                                                                onClick={() => handleCopy(link.code)}
                                                                 className="rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-[11px] text-slate-300 hover:bg-slate-800"
                                                             >
                                                                 Copy
