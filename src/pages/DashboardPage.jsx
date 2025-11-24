@@ -237,8 +237,11 @@ const DashboardPage = () => {
                                     <input
                                         type="text"
                                         value={code}
-                                        onChange={(e) => setCode(e.target.value)}
+                                        onChange={(e) => { 
+                                            setCode(e.target.value)
+                                        }}
                                         placeholder="docs12"
+                                        
                                         className="flex-1 rounded-r-md w-full border border-l-0 border-slate-700 bg-slate-900 px-2 py-2 text-sm text-slate-50 placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                                     />
                                 </div>
