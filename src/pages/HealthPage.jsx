@@ -1,37 +1,40 @@
 import React, { useEffect, useState } from "react";
 import Button from "../components/Button";
 import Badge from "../components/Badge";
+import { API_BASE_URL } from "../config/api";
 
 const HealthPage = () => {
 
     const [loading, setLoading] = useState(true);
-    const [status, setStatus] = useState(null); // { ok, version, uptime }
-    const [error, setError] = useState(null);
+    const [status, setStatus] = useState(null); // { ok, version }
+    const [error, setError] = useState("");
 
-    function simulateFetch() {
+    async function fetchHealth() {
         setLoading(true);
-        setError(null);
-
-        setTimeout(() => {
-            // 1 in 5 chance of error for UI demo
-            const fail = Math.random() < 0.2;
-            if (fail) {
-                setError("Unable to reach health endpoint.");
-                setStatus(null);
-            } else {
-                setStatus({
-                    ok: true,
-                    version: "1.0",
-                    uptime: "2 days 4 hours 15 minutes",
-                    lastChecked: new Date().toISOString(),
-                });
+        setError("");
+        try {
+            const res = await fetch(`${API_BASE_URL}/healthz`);
+            if (!res.ok) {
+                throw new Error("Health check failed");
             }
+            const json = await res.json();
+            // json = { ok: true, version: "1.0" }
+            setStatus({
+                ok: json.ok,
+                version: json.version,
+                lastChecked: new Date().toISOString(),
+            });
+        } catch (err) {
+            console.error(err);
+            setError("Unable to reach health endpoint.");
+            setStatus(null);
+        } finally {
             setLoading(false);
-        }, 600);
+        }
     }
 
     useEffect(() => {
-        simulateFetch();
+        fetchHealth();
     }, []);
 
 
@@ -57,7 +60,7 @@ const HealthPage = () => {
                             <div className="rounded-md border border-rose-800 bg-rose-950/40 px-3 py-2 text-sm text-rose-100">
                                 {error}
                             </div>
-                            <Button onClick={simulateFetch} className="text-xs px-2.5 py-1">
+                            <Button onClick={fetchHealth} className="text-xs px-2.5 py-1">
                                 Retry
                             </Button>
                         </div>
@@ -83,10 +86,6 @@ const HealthPage = () => {
 
                             <div className="grid gap-3 sm:grid-cols-2">
                                 <div className="rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 text-xs text-slate-300">
-                                    <p className="text-[11px] text-slate-400">Uptime</p>
-                                    <p className="font-medium text-slate-50">{status.uptime}</p>
-                                </div>
-                                <div className="rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 text-xs text-slate-300">
                                     <p className="text-[11px] text-slate-400">Last checked</p>
                                     <p className="font-medium text-slate-50">
                                         {new Date(status.lastChecked).toLocaleString()}
@@ -95,10 +94,7 @@ const HealthPage = () => {
                             </div>
 
                             <div className="pt-2">
-                                <Button
-                                    onClick={simulateFetch}
-                                    className="text-xs px-2.5 py-1"
-                                >
+                                <Button onClick={fetchHealth} className="text-xs px-2.5 py-1">
                                     Refresh
                                 </Button>
                             </div>

@@ -187,7 +187,7 @@ const DashboardPage = () => {
                         </p>
                     </div>
                     <p className="text-xs text-slate-500">
-                        Codes must follow <code>[A-Za-z0-9]&#123;6,8&#125;</code>.
+                        {/* Codes must follow <code>[A-Z ,a-z ,0-9]&#123;6,8&#125;</code>. */}
                     </p>
                 </div>
 
